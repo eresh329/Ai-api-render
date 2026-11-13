@@ -1,5 +1,7 @@
 
 import os
+import logging
+
 from flask import Flask, request, jsonify
 from google import genai
 from google.genai import types
@@ -8,23 +10,42 @@ app = Flask(__name__)
 
 app.config["MAX_CONTENT_LENGTH"] = 100 * 1024
 
+logging.basicConfig(level=logging.INFO)
 
-@app.after_request
-def add_headers(response):
-    response.headers["Access-Control-Allow-Origin"] = "*"
-    response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-API-Key"
-    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-    return response
 
+# ==============================
+# HOME ROUTE
+# ==============================
 
 @app.route("/", methods=["GET"])
 def home():
     return jsonify({
+        "name": "ERESH AI API",
         "message": "Welcome to ERESH AI API",
         "endpoint": "/ask",
         "usage": "/ask?key=YOUR_KEY&message=Hello"
     })
 
+
+# ==============================
+# CORS HEADERS
+# ==============================
+
+@app.after_request
+def add_headers(response):
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Headers"] = (
+        "Content-Type, X-API-Key"
+    )
+    response.headers["Access-Control-Allow-Methods"] = (
+        "GET, POST, OPTIONS"
+    )
+    return response
+
+
+# ==============================
+# AI API ROUTE
+# ==============================
 
 @app.route("/ask", methods=["GET", "POST", "OPTIONS"])
 def ask():
@@ -32,16 +53,23 @@ def ask():
     if request.method == "OPTIONS":
         return "", 204
 
+    # GET REQUEST
     if request.method == "GET":
         key = request.args.get("key")
         message = request.args.get("message")
 
+    # POST REQUEST
     else:
         data = request.get_json(silent=True) or {}
 
-        key = request.headers.get("X-API-Key") or data.get("key")
+        key = (
+            request.headers.get("X-API-Key")
+            or data.get("key")
+        )
+
         message = data.get("message")
 
+    # ENVIRONMENT VARIABLES
     access_key = os.environ.get("API_ACCESS_KEY")
     gemini_key = os.environ.get("GEMINI_API_KEY")
 
@@ -50,6 +78,7 @@ def ask():
             "error": "API configuration missing"
         }), 500
 
+    # API KEY CHECK
     if not key:
         return jsonify({
             "error": "API key is required"
@@ -60,13 +89,18 @@ def ask():
             "error": "Invalid API key"
         }), 403
 
+    # MESSAGE CHECK
     if not isinstance(message, str) or not message.strip():
         return jsonify({
             "error": "Message is required"
         }), 400
 
+    # GEMINI AI REQUEST
     try:
-        client = genai.Client(api_key=gemini_key)
+
+        client = genai.Client(
+            api_key=gemini_key
+        )
 
         model = os.environ.get(
             "GEMINI_MODEL",
@@ -78,30 +112,35 @@ def ask():
             contents=message.strip(),
             config=types.GenerateContentConfig(
                 system_instruction=(
-                    "You are ERESH AI, a helpful AI assistant. "
-                    "Always provide short, direct and accurate answers. "
+                    "You are ERESH AI, a helpful assistant. "
+                    "Always give short, direct and accurate answers. "
                     "Reply in the same language as the user's question. "
-                    "Avoid unnecessary explanations and long paragraphs. "
+                    "Avoid unnecessary explanations. "
                     "Keep answers within 2-4 sentences whenever possible. "
-                    "If a question can be answered in one sentence, "
-                    "use only one sentence."
+                    "Use simple language."
                 ),
                 max_output_tokens=120,
                 temperature=0.5
             )
         )
 
+        answer = response.text or ""
+
         return jsonify({
-            "answer": response.text.strip() if response.text else ""
+            "answer": answer.strip()
         })
 
-except Exception as e:
-    app.logger.exception("Gemini API error")
+    except Exception:
+        app.logger.exception("Gemini API request failed")
 
-    return jsonify({
-        "error": str(e)
-    }), 502
+        return jsonify({
+            "error": "AI service temporarily unavailable"
+        }), 502
 
+
+# ==============================
+# LOCAL SERVER
+# ==============================
 
 if __name__ == "__main__":
     app.run(
