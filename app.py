@@ -2,10 +2,12 @@
 import os
 from flask import Flask, request, jsonify
 from google import genai
+from google.genai import types
 
 app = Flask(__name__)
 
 app.config["MAX_CONTENT_LENGTH"] = 100 * 1024
+
 
 @app.after_request
 def add_headers(response):
@@ -18,8 +20,6 @@ def add_headers(response):
 @app.route("/", methods=["GET"])
 def home():
     return jsonify({
-        "status": True,
-        "name": "ERESH AI API",
         "message": "Welcome to ERESH AI API",
         "endpoint": "/ask",
         "usage": "/ask?key=YOUR_KEY&message=Hello"
@@ -35,8 +35,10 @@ def ask():
     if request.method == "GET":
         key = request.args.get("key")
         message = request.args.get("message")
+
     else:
         data = request.get_json(silent=True) or {}
+
         key = request.headers.get("X-API-Key") or data.get("key")
         message = data.get("message")
 
@@ -45,49 +47,58 @@ def ask():
 
     if not access_key or not gemini_key:
         return jsonify({
-            "status": False,
             "error": "API configuration missing"
         }), 500
 
     if not key:
         return jsonify({
-            "status": False,
             "error": "API key is required"
         }), 401
 
     if key != access_key:
         return jsonify({
-            "status": False,
             "error": "Invalid API key"
         }), 403
 
     if not isinstance(message, str) or not message.strip():
         return jsonify({
-            "status": False,
             "error": "Message is required"
         }), 400
 
     try:
         client = genai.Client(api_key=gemini_key)
 
-        model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+        model = os.environ.get(
+            "GEMINI_MODEL",
+            "gemini-2.5-flash"
+        )
 
         response = client.models.generate_content(
             model=model,
-            contents=message.strip()
+            contents=message.strip(),
+            config=types.GenerateContentConfig(
+                system_instruction=(
+                    "You are ERESH AI, a helpful AI assistant. "
+                    "Always provide short, direct and accurate answers. "
+                    "Reply in the same language as the user's question. "
+                    "Avoid unnecessary explanations and long paragraphs. "
+                    "Keep answers within 2-4 sentences whenever possible. "
+                    "If a question can be answered in one sentence, "
+                    "use only one sentence."
+                ),
+                max_output_tokens=120,
+                temperature=0.5
+            )
         )
 
         return jsonify({
-            "status": True,
-            "creator": "ERESH",
-            "model": model,
-            "answer": response.text or ""
+            "answer": response.text.strip() if response.text else ""
         })
 
     except Exception:
-        app.logger.exception("Gemini API request failed")
+        app.logger.exception("Gemini API error")
+
         return jsonify({
-            "status": False,
             "error": "AI service temporarily unavailable"
         }), 502
 
