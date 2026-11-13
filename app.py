@@ -95,12 +95,12 @@ def ask():
             "answer": response.text.strip() if response.text else ""
         })
 
-    except Exception:
-        app.logger.exception("Gemini API error")
+except Exception as e:
+    app.logger.exception("Gemini API error")
 
-        return jsonify({
-            "error": "AI service temporarily unavailable"
-        }), 502
+    return jsonify({
+        "error": str(e)
+    }), 502
 
 
 if __name__ == "__main__":
