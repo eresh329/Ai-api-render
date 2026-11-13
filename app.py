@@ -81,7 +81,7 @@ def ask():
             "status": True,
             "creator": "ERESH",
             "model": model,
-            "response": response.text or ""
+            "answer": response.text or ""
         })
 
     except Exception:
